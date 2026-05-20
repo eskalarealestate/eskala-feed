@@ -161,6 +161,18 @@ def detect_bedrooms(text):
     return 0
 
 
+def get_property_detail(uid):
+    """Obtiene el detalle completo de una propiedad por su uid, incluyendo todas las fotos"""
+    try:
+        url = f"{AE_API_BASE}/properties/{uid}/"
+        r = requests.get(url, headers=HEADERS, timeout=15)
+        if r.status_code == 200:
+            return r.json()
+    except Exception as e:
+        pass
+    return None
+
+
 def extract_images_from_api(prop):
     """Extrae URLs de imágenes de la respuesta de la API"""
     images = []
@@ -169,7 +181,7 @@ def extract_images_from_api(prop):
     image_fields = [
         "photos", "images", "pictures", "media",
         "gallery", "featured_image", "main_image",
-        "photo", "image",
+        "photo", "image", "files", "attachments",
     ]
 
     for field in image_fields:
@@ -184,7 +196,7 @@ def extract_images_from_api(prop):
                 if isinstance(item, str) and item.startswith("http"):
                     images.append(item)
                 elif isinstance(item, dict):
-                    for k in ["url", "src", "image", "photo", "path", "file"]:
+                    for k in ["url", "src", "image", "photo", "path", "file", "original", "large"]:
                         img_url = item.get(k, "")
                         if img_url and img_url.startswith("http"):
                             images.append(img_url)
@@ -545,13 +557,29 @@ def main():
     properties = []
     if raw_properties:
         print(f"\nProcesando {len(raw_properties)} propiedades de la API...")
-        # Imprimir estructura de la primera propiedad para debug
-        if raw_properties:
-            first = raw_properties[0]
-            print(f"  Claves disponibles en API: {list(first.keys())[:20]}")
-        for raw in raw_properties:
-            prop = parse_property(raw)
+
+        # Debug: claves del listado
+        first = raw_properties[0]
+        print(f"  Claves disponibles en API (listado): {list(first.keys())}")
+
+        # Obtener detalle de la primera propiedad para ver todas las claves
+        first_uid = first.get("uid") or first.get("id") or first.get("cid") or ""
+        if first_uid:
+            first_detail = get_property_detail(first_uid)
+            if first_detail:
+                print(f"  Claves disponibles en API (detalle): {list(first_detail.keys())}")
+
+        # Procesar cada propiedad obteniendo su detalle completo
+        for i, raw in enumerate(raw_properties):
+            uid = raw.get("uid") or raw.get("id") or raw.get("cid") or ""
+            detail = None
+            if uid:
+                detail = get_property_detail(uid)
+                time.sleep(0.1)
+            prop = parse_property(detail if detail else raw)
             properties.append(prop)
+            if (i + 1) % 50 == 0:
+                print(f"  Procesadas {i+1}/{len(raw_properties)}...")
     else:
         print("\nAPI no disponible. Usando listado de respaldo...")
         properties = get_fallback_properties()
