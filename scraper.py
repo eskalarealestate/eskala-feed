@@ -295,7 +295,29 @@ def build_property(raw, photos):
     if bedrooms == 0:
         bedrooms = detect_bedrooms(title)
 
-    # Fotos: usar las del scraping, fallback a featured_image
+
+    # Área de la propiedad
+    living_area = 0
+    living_area_unit = "sqm"
+    try:
+        living_area = float(raw.get("property_area", 0) or 0)
+        measurer = str(raw.get("property_area_measurer", "m2")).lower()
+        if "ft" in measurer:
+            living_area_unit = "sqft"
+    except:
+        pass
+
+    plot_area = 0
+    plot_area_unit = "sqm"
+    try:
+        plot_area = float(raw.get("terrain_area", 0) or 0)
+        measurer = str(raw.get("terrain_area_measurer", "m2")).lower()
+        if "ft" in measurer:
+            plot_area_unit = "sqft"
+    except:
+        pass
+
+    # Fotos, fallback a featured_image
     images = photos
     if not images:
         featured = raw.get("featured_image", "")
@@ -316,6 +338,10 @@ def build_property(raw, photos):
         "city": city,
         "country": "DO",
         "bedrooms": bedrooms,
+        "living_area": int(living_area) if living_area > 0 else 0,
+        "living_area_unit": living_area_unit,
+        "plot_area": int(plot_area) if plot_area > 0 else 0,
+        "plot_area_unit": plot_area_unit,
     }
 
 
@@ -378,6 +404,14 @@ def generate_xml(properties):
         ET.SubElement(advert, "Country").text = "DO"
         ET.SubElement(advert, "City").text = prop["city"]
         ET.SubElement(advert, "PostalCode").text = "00000"
+
+        if prop.get("living_area", 0) > 0:
+            ET.SubElement(advert, "LivingArea").text = str(prop["living_area"])
+            ET.SubElement(advert, "LivingAreaUnit").text = prop.get("living_area_unit", "sqm")
+
+        if prop.get("plot_area", 0) > 0:
+            ET.SubElement(advert, "PlotArea").text = str(prop["plot_area"])
+            ET.SubElement(advert, "PlotAreaUnit").text = prop.get("plot_area_unit", "sqm")
 
         images = prop.get("images", [])
         if images:
