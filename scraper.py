@@ -231,7 +231,7 @@ def build_property(raw, photos):
                 if title:
                     break
     if not title:
-        title = raw.get("name", slug.replace("-", " ").title())
+        title = raw.get("name", slug.replace("-", " ").title() if slug else "")
 
     # Descripción
     description = ""
