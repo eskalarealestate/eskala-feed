@@ -345,13 +345,26 @@ def build_property(raw, photos, agents_map=None):
     except:
         pass
 
-    # Fotos, fallback a featured_image
+    # Fotos: usar las del scraping, fallback a featured_image_original (URL pública)
     images = photos
     if not images:
-        featured = raw.get("featured_image", "")
-        if featured and featured.startswith("http"):
-            if "ESKALA" not in featured and "LOGO" not in featured:
-                images = [featured]
+        parent = raw.get("parent", {}) or {}
+        original = parent.get("featured_image_original", "")
+        if original and original.startswith("http"):
+            images = [original]
+        else:
+            featured = raw.get("featured_image", "")
+            if featured and featured.startswith("http"):
+                if "ESKALA" not in featured and "LOGO" not in featured:
+                    images = [featured]
+
+    # Agente asignado a esta propiedad
+    agent_data = {}
+    if agents_map:
+        agent_names = raw.get("agents", [])
+        if agent_names and isinstance(agent_names, list):
+            agent_name = agent_names[0]
+            agent_data = agents_map.get(agent_name, {})
 
     return {
         "id": prop_id,
