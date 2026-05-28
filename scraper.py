@@ -439,9 +439,17 @@ def main():
         print("ERROR: No se pudieron obtener propiedades de la API.")
         return
 
-    # Debug: ver estructura del campo agents
+    # Debug: ver estructura completa de la primera propiedad
     if raw_properties:
-        print(f"  agents sample: {raw_properties[0].get('agents')}")
+        print(f"  Primera propiedad completa: {raw_properties[0]}")
+
+    # Debug: intentar endpoint de agentes
+    for endpoint in ["/agents/", "/users/", "/team/", "/brokers/"]:
+        try:
+            r = requests.get(f"{AE_API_BASE}{endpoint}", headers=API_HEADERS, timeout=10)
+            print(f"  {endpoint} -> status {r.status_code}: {r.text[:300]}")
+        except Exception as e:
+            print(f"  {endpoint} -> error: {e}")
 
     # Paso 2: scraping de fotos + construcción de propiedades
     print("\n--- Paso 2: Scraping de fotos ---")
