@@ -481,6 +481,10 @@ def main():
 
 
 
+    # Cargar agentes
+    print("\n--- Cargando agentes ---")
+    agents_map = get_agents()
+
     # Paso 2: scraping de fotos + construcción de propiedades
     print("\n--- Paso 2: Scraping de fotos ---")
     properties = []
