@@ -153,6 +153,34 @@ def get_properties_from_api():
     return all_properties
 
 
+
+# ============================================================
+# OBTENER AGENTES DESDE LA API
+# ============================================================
+def get_agents():
+    """Obtiene todos los agentes y construye un mapa nombre -> datos"""
+    agents_map = {}
+    try:
+        r = requests.get(f"{AE_API_BASE}/agents/", headers=API_HEADERS, timeout=15)
+        if r.status_code == 200:
+            agents_list = r.json()
+            if isinstance(agents_list, list):
+                for agent in agents_list:
+                    full_name = agent.get("full_name", "").strip()
+                    if full_name:
+                        agents_map[full_name] = {
+                            "id": agent.get("slug", str(agent.get("id", ""))),
+                            "name": full_name,
+                            "email": agent.get("email", ""),
+                            "phone": agent.get("phone", ""),
+                            "position": agent.get("position", ""),
+                        }
+                print(f"  Agentes cargados: {list(agents_map.keys())}")
+    except Exception as e:
+        print(f"  Error cargando agentes: {e}")
+    return agents_map
+
+
 # ============================================================
 # PASO 2: SCRAPING DE FOTOS DESDE LA PÁGINA WEB
 # ============================================================
@@ -211,7 +239,7 @@ def scrape_photos(url):
 # ============================================================
 # PASO 3: COMBINAR DATOS DE API + FOTOS
 # ============================================================
-def build_property(raw, photos):
+def build_property(raw, photos, agents_map=None):
     """Construye el objeto propiedad combinando datos de la API y fotos del scraping"""
 
     slug = raw.get("slug", "")
@@ -317,13 +345,26 @@ def build_property(raw, photos):
     except:
         pass
 
-    # Fotos, fallback a featured_image
+    # Fotos: usar las del scraping, fallback a featured_image_original (URL pública)
     images = photos
     if not images:
-        featured = raw.get("featured_image", "")
-        if featured and featured.startswith("http"):
-            if "ESKALA" not in featured and "LOGO" not in featured:
-                images = [featured]
+        parent = raw.get("parent", {}) or {}
+        original = parent.get("featured_image_original", "")
+        if original and original.startswith("http"):
+            images = [original]
+        else:
+            featured = raw.get("featured_image", "")
+            if featured and featured.startswith("http"):
+                if "ESKALA" not in featured and "LOGO" not in featured:
+                    images = [featured]
+
+    # Agente asignado a esta propiedad
+    agent_data = {}
+    if agents_map:
+        agent_names = raw.get("agents", [])
+        if agent_names and isinstance(agent_names, list):
+            agent_name = agent_names[0]
+            agent_data = agents_map.get(agent_name, {})
 
     return {
         "id": prop_id,
@@ -342,6 +383,7 @@ def build_property(raw, photos):
         "living_area_unit": living_area_unit,
         "plot_area": int(plot_area) if plot_area > 0 else 0,
         "plot_area_unit": plot_area_unit,
+        "agent": agent_data,
     }
 
 
@@ -415,9 +457,20 @@ def generate_xml(properties):
 
         images = prop.get("images", [])
         if images:
-            photos = ET.SubElement(advert, "Photos")
+            photos_el = ET.SubElement(advert, "Photos")
             for img_url in images:
-                ET.SubElement(photos, "Photo").text = img_url
+                ET.SubElement(photos_el, "Photo").text = img_url
+
+        # Agente por propiedad
+        agent = prop.get("agent", {})
+        if agent and agent.get("name"):
+            listing_contact = ET.SubElement(advert, "ListingContact")
+            ET.SubElement(listing_contact, "ContactId").text = str(agent.get("id", ""))
+            ET.SubElement(listing_contact, "ContactName").text = agent.get("name", "")
+            if agent.get("email"):
+                ET.SubElement(listing_contact, "ContactEmail").text = agent["email"]
+            if agent.get("phone"):
+                ET.SubElement(listing_contact, "ContactPhone").text = agent["phone"]
 
     xml_str = ET.tostring(root, encoding="unicode")
     parsed = minidom.parseString(xml_str)
@@ -439,17 +492,11 @@ def main():
         print("ERROR: No se pudieron obtener propiedades de la API.")
         return
 
-    # Debug: ver estructura completa de la primera propiedad
-    if raw_properties:
-        print(f"  Primera propiedad completa: {raw_properties[0]}")
 
-    # Debug: intentar endpoint de agentes
-    for endpoint in ["/agents/", "/users/", "/team/", "/brokers/"]:
-        try:
-            r = requests.get(f"{AE_API_BASE}{endpoint}", headers=API_HEADERS, timeout=10)
-            print(f"  {endpoint} -> status {r.status_code}: {r.text[:300]}")
-        except Exception as e:
-            print(f"  {endpoint} -> error: {e}")
+
+    # Cargar agentes
+    print("\n--- Cargando agentes ---")
+    agents_map = get_agents()
 
     # Paso 2: scraping de fotos + construcción de propiedades
     print("\n--- Paso 2: Scraping de fotos ---")
@@ -465,7 +512,7 @@ def main():
             photos = scrape_photos(url)
             time.sleep(0.3)
 
-        prop = build_property(raw, photos)
+        prop = build_property(raw, photos, agents_map)
         properties.append(prop)
 
         if not photos:
