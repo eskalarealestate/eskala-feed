@@ -439,6 +439,10 @@ def main():
         print("ERROR: No se pudieron obtener propiedades de la API.")
         return
 
+    # Debug: ver estructura del campo agents
+    if raw_properties:
+        print(f"  agents sample: {raw_properties[0].get('agents')}")
+
     # Paso 2: scraping de fotos + construcción de propiedades
     print("\n--- Paso 2: Scraping de fotos ---")
     properties = []
