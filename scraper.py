@@ -175,7 +175,7 @@ def get_agents():
                             "phone": agent.get("phone", ""),
                             "position": agent.get("position", ""),
                         }
-                print(f"  Agentes cargados: {list(agents_map.keys())}")
+                print(f"  Agentes cargados: {len(agents_map)}")
     except Exception as e:
         print(f"  Error cargando agentes: {e}")
     return agents_map
@@ -358,13 +358,19 @@ def build_property(raw, photos, agents_map=None):
                 if "ESKALA" not in featured and "LOGO" not in featured:
                     images = [featured]
 
-    # Agente asignado a esta propiedad
-    agent_data = {}
+    # Agente asignado a esta propiedad (fallback a Edwin si no tiene agente)
+    DEFAULT_AGENT = {
+        "id": "pamela-de-los-angeles-perez-mercado",
+        "name": "Pamela Pérez Mercado",
+        "email": "p.perez@eskala.com.do",
+        "phone": "8098859514",
+    }
+    agent_data = DEFAULT_AGENT
     if agents_map:
         agent_names = raw.get("agents", [])
         if agent_names and isinstance(agent_names, list):
             agent_name = agent_names[0]
-            agent_data = agents_map.get(agent_name, {})
+            agent_data = agents_map.get(agent_name, DEFAULT_AGENT)
 
     return {
         "id": prop_id,
