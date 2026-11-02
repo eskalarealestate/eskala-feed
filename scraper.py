@@ -1,3 +1,4 @@
+import json
 import requests
 from bs4 import BeautifulSoup
 import xml.etree.ElementTree as ET
@@ -184,19 +185,68 @@ def get_agents():
 # ============================================================
 # PASO 2: SCRAPING DE FOTOS DESDE LA PÁGINA WEB
 # ============================================================
-def scrape_photos(url):
+
+def extract_description(soup, short_hint=""):
+    """Extrae la descripción completa de la página de la propiedad (sin depender de clases CSS)"""
+    candidates = []
+
+    # 1) JSON-LD / meta tags
+    for script in soup.find_all("script", type="application/ld+json"):
+        try:
+            data = json.loads(script.string or "")
+            items = data if isinstance(data, list) else [data]
+            for it in items:
+                if isinstance(it, dict) and it.get("description"):
+                    candidates.append(str(it["description"]))
+        except Exception:
+            pass
+    for m in soup.find_all("meta"):
+        if m.get("property") in ("og:description",) or m.get("name") == "description":
+            if m.get("content"):
+                candidates.append(m["content"])
+
+    # 2) Bloques de texto largos dentro de la página (el más largo que no sea menú/footer)
+    for tag in soup(["script", "style", "nav", "footer", "header", "noscript"]):
+        tag.decompose()
+    for el in soup.find_all(["p", "div", "section", "article"]):
+        # solo bloques "hoja": sin hijos div/section/article grandes
+        if el.find(["div", "section", "article"]):
+            continue
+        text = el.get_text(" ", strip=True)
+        if len(text) > 80:
+            candidates.append(text)
+
+    cleaned = []
+    for c in candidates:
+        c = re.sub(r'<[^>]+>', ' ', c)
+        c = re.sub(r'\s+', ' ', c).strip()
+        if c:
+            cleaned.append(c)
+
+    # Preferir el candidato que contenga el inicio del texto corto de la API
+    hint = re.sub(r'\s+', ' ', re.sub(r'<[^>]+>', ' ', short_hint or '')).strip()[:40]
+    if hint:
+        matches = [c for c in cleaned if hint in c]
+        if matches:
+            return max(matches, key=len)
+    return max(cleaned, key=len) if cleaned else ""
+
+
+def scrape_photos(url, short_hint=""):
     """Visita la página de la propiedad y extrae todas las fotos reales"""
     try:
         r = requests.get(url, headers=SCRAPE_HEADERS, timeout=15)
         if r.status_code != 200:
-            return []
+            return [], ""
 
         soup = BeautifulSoup(r.text, "html.parser")
 
         # Verificar que no es página de error
         page_text = soup.get_text()
         if "página que estás buscando no existe" in page_text or "no existe o ha sido movida" in page_text:
-            return []
+            return [], ""
+
+        full_desc = extract_description(BeautifulSoup(r.text, "html.parser"), short_hint)
 
         images = []
 
@@ -230,16 +280,16 @@ def scrape_photos(url):
             and "static/companies" not in img and "static/user" not in img
         ]
 
-        return images[:20]
+        return images[:20], full_desc
 
     except Exception as e:
-        return []
+        return [], ""
 
 
 # ============================================================
 # PASO 3: COMBINAR DATOS DE API + FOTOS
 # ============================================================
-def build_property(raw, photos, agents_map=None):
+def build_property(raw, photos, agents_map=None, full_desc=""):
     """Construye el objeto propiedad combinando datos de la API y fotos del scraping"""
 
     slug = raw.get("slug", "")
@@ -272,6 +322,8 @@ def build_property(raw, photos, agents_map=None):
                     break
     if not description:
         description = raw.get("short_description", "")
+    if len(full_desc) > len(str(description)):
+        description = full_desc
     description = re.sub(r'<[^>]+>', ' ', str(description)).strip()
     description = re.sub(r'\s+', ' ', description)
     if not description:
@@ -514,11 +566,12 @@ def main():
         url = f"{BASE_URL}/propiedad/{slug}"
 
         photos = []
+        full_desc = ""
         if slug:
-            photos = scrape_photos(url)
+            photos, full_desc = scrape_photos(url, raw.get('short_description', ''))
             time.sleep(0.3)
 
-        prop = build_property(raw, photos, agents_map)
+        prop = build_property(raw, photos, agents_map, full_desc)
         properties.append(prop)
 
         if not photos:
